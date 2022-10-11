@@ -60,20 +60,22 @@ class Global {
 public:
 	int xres, yres;
 	char keys[65536];
-	unsigned int mouse_cursor; //unsigned data types will sometimes process faster depending on the process
-	unsigned int credits;
-	Global() {
+	unsigned int feature_mode;
+    Vec p1, p2;
+    int cross_line;
+    Global() {
 		xres = 640;
 		yres = 480;
 		memset(keys, 0, 65536);
-		mouse_cursor = 0; //initial state is off (not visable)
-		credits = 0;      //credits intially off
+		feature_mode = 0;
+        cross_line = 0;
 	}
 } gl;
 
 class Ship {
 public:
 	Vec pos;
+    Vec prev_pos;
 	Vec dir;
 	Vec vel;
 	Vec acc;
@@ -436,10 +438,6 @@ void check_mouse(XEvent *e)
 	//keys[XK_Up] = 0;
 	if (savex != e->xbutton.x || savey != e->xbutton.y) {
 		//Mouse moved
-		//check	mouse state
-		if (gl.mouse_cursor)
-			return;
-		//
 		int xdiff = savex - e->xbutton.x;
 		int ydiff = savey - e->xbutton.y;
 		if (++ct < 10)
@@ -512,19 +510,17 @@ int check_keys(XEvent *e)
 	switch (key) {
 		case XK_Escape:
 			return 1;
-		case XK_m:
-			//toggle mouse cursor state
-			if (gl.mouse_cursor == 0)
-			    	gl.mouse_cursor = 1;
-			else
-			    	gl.mouse_cursor = 0;
-			x11.show_mouse_cursor(gl.mouse_cursor);
-			break;
-		case XK_c:
-			//toggle credits screen on/off
-			//gl.credits = !gl.credits;
-			gl.credits ^= 1; //exclusive or
-			break;
+		case XK_f:
+			// toggle feature mode
+			gl.feature_mode ^= 1;
+			if (gl.feature_mode == 1) {
+                gl.p1[0] = rand() % gl.xres;
+                gl.p1[1] = rand() % gl.yres;
+                gl.p2[0] = rand() % gl.xres;
+                gl.p2[1] = rand() % gl.yres;
+
+            }
+            break;
 		case XK_s:
 			break;
 		case XK_Down:
@@ -593,7 +589,10 @@ void buildAsteroidFragment(Asteroid *ta, Asteroid *a)
 void physics()
 {
 	Flt d0,d1,dist;
-	//Update ship position
+	//Save ship previous position
+    g.ship.prev_pos[0] = g.ship.pos[0];
+    g.ship.prev_pos[1] = g.ship.pos[1];
+    //Update ship position
 	g.ship.pos[0] += g.ship.vel[0];
 	g.ship.pos[1] += g.ship.vel[1];
 	//Check for collision with window edges
@@ -797,18 +796,6 @@ void physics()
 	}
 }
 
-void show_credits() {
-    	int xcent = gl.xres / 2;
-	int ycent = gl.yres / 2;
-	int w = 200;
-	glColor3f(1.0,0.0,0.0);
-        glBegin(GL_QUADS);
-		glVertex2f(xcent-w, ycent-w);
-		glVertex2f(xcent-w, ycent+w);
-		glVertex2f(xcent+w, ycent+w);
-		glVertex2f(xcent+w, ycent-w);
-	glEnd();
-}
 void render()
 {
 	Rect r;
@@ -911,11 +898,73 @@ void render()
 		glVertex2f(b->pos[0]+1.0f, b->pos[1]+1.0f);
 		glEnd();
 	}
-	if (gl.credits) {
-	    //show credits
-	    show_credits();
-	    return;
-	}
+
+	// Apply feature mode
+	if (gl.feature_mode != 0) {
+		// Draw a border using a triangle strip
+		
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_BLEND);
+	    glColor3f(1.0, 1.0, 0.0);
+	    glColor4f(1.0, 1.0, 0.0, 0.9);
+		int w = 20;
+		glBegin(GL_TRIANGLE_STRIP);
+			glVertex2i(0,0);
+			glVertex2i(w,w);
+			
+			glVertex2i(0, gl.yres);
+			glVertex2i(0+w, gl.yres-w);
+
+			glVertex2i(gl.xres, gl.yres);
+			glVertex2i(gl.xres-w, gl.yres-w);
+
+
+			glVertex2i(gl.xres, 0);
+			glVertex2i(gl.xres-w, w);
+
+			glVertex2i(0, 0);
+			glVertex2i(w, w);
+
+
+		glEnd();
+        glDisable(GL_BLEND);
+        glColor3f(1.0,0.0,0.0);
+        glBegin(GL_QUADS);
+            glVertex2i(gl.p1[0]-5, gl.p1[1]-5);
+            glVertex2i(gl.p1[0]-5, gl.p1[1]+5);
+            glVertex2i(gl.p1[0]+5, gl.p1[1]+5);
+            glVertex2i(gl.p1[0]+5, gl.p1[1]-5);
+	    glEnd();
+        glBegin(GL_QUADS);
+            glVertex2i(gl.p2[0]-5, gl.p2[1]-5);
+            glVertex2i(gl.p2[0]-5, gl.p2[1]+5);
+            glVertex2i(gl.p2[0]+5, gl.p2[1]+5);
+            glVertex2i(gl.p2[0]+5, gl.p2[1]-5);
+	    glEnd();
+        if (gl.cross_line) {
+            glColor3f(1.0,1.0,1.0);
+        }
+        glBegin(GL_LINES);
+            glVertex2i(gl.p1[0], gl.p1[1]);
+            glVertex2i(gl.p2[0], gl.p2[1]);
+	    glEnd();
+        Vec vector = {gl.p2[0] - gl.p1[0], gl.p2[1] - gl.p1[1] };
+        Vec perp = { vector[1], -vector[0] };  
+        // create vectors for prev and current pos of ship  
+        Vec vship1 = { g.ship.prev_pos[0] - gl.p2[0],
+                       g.ship.prev_pos[1] - gl.p2[1] };   
+        Vec vship2 = { g.ship.pos[0] - gl.p2[0],
+                       g.ship.pos[1] - gl.p2[1] };  
+       double dot1 = perp[0] * vship1[0] + perp[1] * vship1[1];
+       double dot2 = perp[0] * vship2[0] + perp[1] * vship2[1];
+       // the sign of the vectors ...
+       int sign1 = (dot1 < 0.0) ? -1 : 1;
+       int sign2 = (dot2 < 0.0) ? -1 : 1;
+       if (sign1 != sign2) {
+            gl.cross_line = 1;
+       }
+
+    }
 }
 
 
